@@ -1,0 +1,93 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: event_scraper_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    # Kein ports: - DB nur intern erreichbar
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  api:
+    build: .
+    container_name: event_scraper_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GEOCODING_DRY_RUN: ${GEOCODING_DRY_RUN:-false}
+    # Kein ports: - nur Caddy kann auf die API zugreifen
+    command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    networks:
+      - internal
+
+  scheduler:
+    build: .
+    container_name: event_scraper_scheduler
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      REQUEST_DELAY: ${REQUEST_DELAY:-1.5}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GEOCODING_DRY_RUN: ${GEOCODING_DRY_RUN:-false}
+      # Scrape-Tage: Dienstag=tue, Freitag=fri
+      SCRAPE_DAYS: ${SCRAPE_DAYS:-tue,fri}
+      SCRAPE_HOUR: ${SCRAPE_HOUR:-6}
+      SCRAPE_MINUTE: ${SCRAPE_MINUTE:-0}
+    command: ["python", "-m", "src.scheduler"]
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: event_scraper_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    networks:
+      - internal
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:
+    driver: bridge

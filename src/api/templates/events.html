@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Events - Event Scraper{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+    <h1>Events ({{ total }})</h1>
+</div>
+
+<!-- Location-Filter Tabs -->
+<div class="filter-bar">
+    <a href="/events?{% if source_id %}source_id={{ source_id }}&{% endif %}{% if search %}search={{ search }}&{% endif %}per_page={{ per_page }}"
+       class="btn {% if not location_filter %}btn-primary{% else %}btn-secondary{% endif %}">
+        Alle ({{ all_count }})
+    </a>
+    <a href="/events?location_filter=missing{% if source_id %}&source_id={{ source_id }}{% endif %}{% if search %}&search={{ search }}{% endif %}&per_page={{ per_page }}"
+       class="btn {% if location_filter == 'missing' %}btn-primary{% else %}btn-secondary{% endif %}">
+        Ohne Location ({{ missing_count }})
+    </a>
+    <a href="/events?location_filter=assigned{% if source_id %}&source_id={{ source_id }}{% endif %}{% if search %}&search={{ search }}{% endif %}&per_page={{ per_page }}"
+       class="btn {% if location_filter == 'assigned' %}btn-primary{% else %}btn-secondary{% endif %}">
+        Mit Location ({{ assigned_count }})
+    </a>
+</div>
+
+<div class="card">
+    <form method="get" class="filter-bar">
+        {% if location_filter %}
+        <input type="hidden" name="location_filter" value="{{ location_filter }}">
+        {% endif %}
+        <input type="text" name="search" class="form-input" placeholder="Suche..." value="{{ search }}">
+        <select name="source_id" class="form-input">
+            <option value="">Alle Sources</option>
+            {% for source in sources %}
+            <option value="{{ source.id }}" {% if source_id == source.id %}selected{% endif %}>
+                {{ source.name }}
+            </option>
+            {% endfor %}
+        </select>
+        <select name="per_page" class="form-input" style="width: 100px;">
+            <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+            <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+            <option value="200" {% if per_page == 200 %}selected{% endif %}>200</option>
+        </select>
+        <button type="submit" class="btn btn-primary">Filtern</button>
+        {% if search or source_id or location_filter %}
+        <a href="/events" class="btn btn-secondary">Reset</a>
+        {% endif %}
+    </form>
+
+    {% if events %}
+    <table>
+        <thead>
+            <tr>
+                <th>Datum</th>
+                <th>Uhrzeit</th>
+                <th>Titel</th>
+                <th>Ort</th>
+                <th>Source</th>
+                <th>Aktionen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for event in events %}
+            <tr>
+                <td>{{ event.event_date.strftime('%d.%m.%Y') }}</td>
+                <td>{{ event.event_time.strftime('%H:%M') if event.event_time else '-' }}</td>
+                <td>
+                    {% if event.url %}
+                    <a href="{{ event.url }}" target="_blank">{{ event.title }}</a>
+                    {% else %}
+                    {{ event.title }}
+                    {% endif %}
+                </td>
+                <td class="text-muted">
+                    {% if event.location %}
+                        {{ event.location.display_name or event.location.raw_name }}
+                    {% elif event.raw_location %}
+                        {{ event.raw_location }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td class="text-sm">{{ event.source.name if event.source else '-' }}</td>
+                <td>
+                    <a href="/events/{{ event.id }}/edit" class="btn btn-primary btn-sm">Bearbeiten</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        {% if current_page > 1 %}
+        <a href="?page={{ current_page - 1 }}&per_page={{ per_page }}{% if source_id %}&source_id={{ source_id }}{% endif %}{% if search %}&search={{ search }}{% endif %}{% if location_filter %}&location_filter={{ location_filter }}{% endif %}">Zurück</a>
+        {% endif %}
+
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == current_page %}
+            <a class="active">{{ p }}</a>
+            {% elif p <= 3 or p > total_pages - 2 or (p >= current_page - 1 and p <= current_page + 1) %}
+            <a href="?page={{ p }}&per_page={{ per_page }}{% if source_id %}&source_id={{ source_id }}{% endif %}{% if search %}&search={{ search }}{% endif %}{% if location_filter %}&location_filter={{ location_filter }}{% endif %}">{{ p }}</a>
+            {% elif p == 4 or p == total_pages - 2 %}
+            <span>...</span>
+            {% endif %}
+        {% endfor %}
+
+        {% if current_page < total_pages %}
+        <a href="?page={{ current_page + 1 }}&per_page={{ per_page }}{% if source_id %}&source_id={{ source_id }}{% endif %}{% if search %}&search={{ search }}{% endif %}{% if location_filter %}&location_filter={{ location_filter }}{% endif %}">Weiter</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <p class="text-muted">Keine Events gefunden.</p>
+    {% endif %}
+</div>
+{% endblock %}

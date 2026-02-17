@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Event bearbeiten - Event Scraper{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+    <h1>Event bearbeiten</h1>
+    <a href="/events" class="btn btn-secondary">Zurück</a>
+</div>
+
+<div class="card">
+    <!-- Read-only Info -->
+    <div class="mb-4" style="padding: 1rem; background: var(--gray-100); border-radius: 6px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
+            <div>
+                <strong>External ID:</strong><br>
+                <span class="text-muted">{{ event.external_id }}</span>
+            </div>
+            <div>
+                <strong>Source:</strong><br>
+                <span class="text-muted">{{ event.source.name if event.source else '-' }}</span>
+            </div>
+            <div>
+                <strong>Erstellt am:</strong><br>
+                <span class="text-muted">{{ event.created_at.strftime('%d.%m.%Y %H:%M') if event.created_at else '-' }}</span>
+            </div>
+        </div>
+    </div>
+
+    <form method="post">
+        <div class="form-group">
+            <label class="form-label">Titel</label>
+            <input type="text" name="title" class="form-input"
+                   value="{{ event.title }}" required>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label class="form-label">Datum</label>
+                <input type="date" name="event_date" class="form-input"
+                       value="{{ event.event_date.isoformat() }}" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Uhrzeit</label>
+                <input type="time" name="event_time" class="form-input"
+                       value="{{ event.event_time.strftime('%H:%M') if event.event_time else '' }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">URL</label>
+            <input type="text" name="url" class="form-input"
+                   value="{{ event.url or '' }}"
+                   placeholder="https://...">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Raw Location</label>
+            <input type="text" name="raw_location" class="form-input"
+                   value="{{ event.raw_location or '' }}"
+                   placeholder="Freitext-Location vom Scraper">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Location-Zuordnung</label>
+            <select name="location_id" class="form-input">
+                <option value="">-- Keine Location --</option>
+                {% for location in locations %}
+                <option value="{{ location.id }}"
+                        {% if event.location_id == location.id %}selected{% endif %}>
+                    {{ location.display_name or location.raw_name }}
+                    {% if location.city %} ({{ location.city }}){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="flex gap-2" style="margin-top: 1.5rem;">
+            <button type="submit" class="btn btn-primary">Speichern</button>
+            <a href="/events" class="btn btn-secondary">Abbrechen</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

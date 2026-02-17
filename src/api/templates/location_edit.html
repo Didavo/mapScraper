@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Location bearbeiten - Event Scraper{% endblock %}
+
+{% block head %}
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin="" />
+<style>
+    #map {
+        height: 300px;
+        width: 100%;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+    }
+    .map-info {
+        font-size: 0.875rem;
+        color: var(--gray-600);
+        margin-bottom: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+    <h1>Location bearbeiten</h1>
+    <a href="/locations?status=pending" class="btn btn-secondary">Zurück</a>
+</div>
+
+<div class="card">
+    <div class="mb-4" style="padding: 1rem; background: var(--gray-100); border-radius: 6px;">
+        <strong>Raw Name:</strong> {{ location.raw_name }}
+    </div>
+
+    <form method="post">
+        <div class="form-group">
+            <label class="form-label">Anzeigename</label>
+            <input type="text" name="display_name" class="form-input"
+                   value="{{ location.display_name or '' }}"
+                   placeholder="z.B. Turnhalle Mulfingen">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label class="form-label">Straße</label>
+                <input type="text" name="street" class="form-input"
+                       value="{{ location.street or '' }}"
+                       placeholder="z.B. Hauptstraße">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Hausnummer</label>
+                <input type="text" name="house_number" class="form-input"
+                       value="{{ location.house_number or '' }}"
+                       placeholder="z.B. 12">
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 1rem;">
+            <div class="form-group">
+                <label class="form-label">PLZ</label>
+                <input type="text" name="postal_code" class="form-input"
+                       value="{{ location.postal_code or '' }}"
+                       placeholder="z.B. 74673">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Stadt</label>
+                <input type="text" name="city" class="form-input"
+                       value="{{ location.city or '' }}"
+                       placeholder="z.B. Mulfingen">
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label class="form-label">Latitude</label>
+                <input type="text" name="latitude" id="latitude" class="form-input"
+                       value="{{ location.latitude or '' }}"
+                       placeholder="z.B. 49.3412">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Longitude</label>
+                <input type="text" name="longitude" id="longitude" class="form-input"
+                       value="{{ location.longitude or '' }}"
+                       placeholder="z.B. 9.8012">
+            </div>
+        </div>
+
+        <!-- OpenStreetMap -->
+        <div class="form-group">
+            <label class="form-label">Karte</label>
+            <p class="map-info">Marker verschieben um Koordinaten anzupassen</p>
+            <div id="map"></div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Status</label>
+            <select name="status" class="form-input">
+                <option value="pending" {% if location.status == 'pending' %}selected{% endif %}>Pending</option>
+                <option value="confirmed" {% if location.status == 'confirmed' %}selected{% endif %}>Confirmed</option>
+                <option value="ignored" {% if location.status == 'ignored' %}selected{% endif %}>Ignored</option>
+            </select>
+        </div>
+
+        <div class="flex gap-2" style="margin-top: 1.5rem;">
+            <button type="submit" class="btn btn-primary">Speichern</button>
+            <a href="/locations?status=pending" class="btn btn-secondary">Abbrechen</a>
+        </div>
+    </form>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+<script>
+(function() {
+    const latInput = document.getElementById('latitude');
+    const lonInput = document.getElementById('longitude');
+    const mapDiv = document.getElementById('map');
+
+    // Koordinaten aus Eingabefeldern lesen
+    let lat = parseFloat(latInput.value);
+    let lon = parseFloat(lonInput.value);
+
+    // Default-Koordinaten (Künzelsau) falls keine vorhanden
+    const defaultLat = 49.2789;
+    const defaultLon = 9.6878;
+
+    const hasCoords = !isNaN(lat) && !isNaN(lon);
+
+    if (!hasCoords) {
+        // Zeige Hinweis wenn keine Koordinaten
+        mapDiv.innerHTML = '<p style="padding: 2rem; text-align: center; color: var(--gray-500); background: var(--gray-100); border-radius: 6px;">Keine Koordinaten vorhanden. Geben Sie Latitude und Longitude ein oder klicken Sie auf die Karte.</p>';
+        lat = defaultLat;
+        lon = defaultLon;
+    }
+
+    // Karte initialisieren
+    const map = L.map('map').setView([lat, lon], hasCoords ? 15 : 10);
+
+    // OpenStreetMap Tiles hinzufügen
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    // Marker erstellen (nur wenn Koordinaten vorhanden)
+    let marker = null;
+
+    function updateInputs(latlng) {
+        latInput.value = latlng.lat.toFixed(6);
+        lonInput.value = latlng.lng.toFixed(6);
+    }
+
+    function createOrMoveMarker(latlng) {
+        if (marker) {
+            marker.setLatLng(latlng);
+        } else {
+            marker = L.marker(latlng, { draggable: true }).addTo(map);
+
+            // Marker-Drag-Event
+            marker.on('dragend', function(e) {
+                updateInputs(e.target.getLatLng());
+            });
+        }
+        updateInputs(latlng);
+    }
+
+    if (hasCoords) {
+        createOrMoveMarker([lat, lon]);
+    }
+
+    // Klick auf Karte setzt/verschiebt Marker
+    map.on('click', function(e) {
+        createOrMoveMarker(e.latlng);
+        map.setView(e.latlng, map.getZoom());
+    });
+
+    // Wenn Koordinaten manuell geändert werden, Marker aktualisieren
+    function onCoordsChange() {
+        const newLat = parseFloat(latInput.value);
+        const newLon = parseFloat(lonInput.value);
+
+        if (!isNaN(newLat) && !isNaN(newLon)) {
+            const latlng = L.latLng(newLat, newLon);
+            if (marker) {
+                marker.setLatLng(latlng);
+            } else {
+                createOrMoveMarker(latlng);
+            }
+            map.setView(latlng, 15);
+        }
+    }
+
+    latInput.addEventListener('change', onCoordsChange);
+    lonInput.addEventListener('change', onCoordsChange);
+})();
+</script>
+{% endblock %}

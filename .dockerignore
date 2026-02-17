@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.eggs
+*.egg-info
+venv/
+.venv/
+ENV/
+
+# IDE
+.vscode
+.idea
+.claude
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+!.env.production
+
+# Docker
+Dockerfile
+docker-compose*.yml
+Caddyfile
+
+# Tests
+.pytest_cache
+.coverage
+htmlcov
+
+# Docs / Prompts
+*.md
+Cross7-Prompt
+NEUER_SCRAPER_PROMPT.md
+
+# Misc
+*.log
+*.tmp

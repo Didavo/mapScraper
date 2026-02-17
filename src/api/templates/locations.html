@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}Locations - Event Scraper{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+    <h1>Locations ({{ total }})</h1>
+    <div class="flex gap-2">
+        <button onclick="document.getElementById('import-modal').style.display='flex'" class="btn btn-secondary btn-sm">
+            📤 Import
+        </button>
+        <a href="/api/locations/export/csv{% if status %}?status={{ status }}{% endif %}" class="btn btn-secondary btn-sm">
+            📥 CSV Export
+        </a>
+        <a href="/api/locations/export/json{% if status %}?status={{ status }}{% endif %}" class="btn btn-secondary btn-sm">
+            📥 JSON Export
+        </a>
+    </div>
+</div>
+
+<!-- Import Modal -->
+<div id="import-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Locations importieren</h2>
+            <button onclick="document.getElementById('import-modal').style.display='none'" class="modal-close">&times;</button>
+        </div>
+        <form id="import-form" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="import-file" class="form-label">CSV oder JSON Datei auswählen:</label>
+                <input type="file" id="import-file" name="file" accept=".csv,.json" required>
+            </div>
+            <p class="text-sm text-muted mb-4">
+                Die Datei muss die gleiche Struktur haben wie der Export.<br>
+                Locations werden anhand der ID aktualisiert.
+            </p>
+            <div id="import-result" style="display: none;" class="mb-4"></div>
+            <div class="flex gap-2">
+                <button type="submit" class="btn btn-primary">Importieren</button>
+                <button type="button" onclick="document.getElementById('import-modal').style.display='none'" class="btn btn-secondary">Abbrechen</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.getElementById('import-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const fileInput = document.getElementById('import-file');
+    const resultDiv = document.getElementById('import-result');
+
+    if (!fileInput.files.length) {
+        alert('Bitte eine Datei auswählen');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    resultDiv.innerHTML = '<p>Importiere...</p>';
+    resultDiv.style.display = 'block';
+
+    try {
+        const response = await fetch('/api/locations/import', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            let html = '<div class="alert alert-success">';
+            html += `<strong>Import erfolgreich!</strong><br>`;
+            html += `Aktualisiert: ${data.updated}<br>`;
+            html += `Übersprungen: ${data.skipped}`;
+            if (data.errors && data.errors.length > 0) {
+                html += `<br>Fehler: ${data.errors.length}`;
+            }
+            html += '</div>';
+
+            if (data.errors && data.errors.length > 0) {
+                html += '<div class="alert alert-warning"><strong>Fehler:</strong><ul>';
+                data.errors.forEach(err => {
+                    html += `<li>${err}</li>`;
+                });
+                html += '</ul></div>';
+            }
+
+            resultDiv.innerHTML = html;
+
+            // Seite nach 2 Sekunden neu laden
+            if (data.updated > 0) {
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            }
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-error">${data.detail || 'Fehler beim Import'}</div>`;
+        }
+    } catch (err) {
+        resultDiv.innerHTML = `<div class="alert alert-error">Fehler: ${err.message}</div>`;
+    }
+});
+</script>
+
+<div class="filter-bar">
+    <a href="/locations{% if search %}?search={{ search }}{% endif %}" class="btn {% if not status %}btn-primary{% else %}btn-secondary{% endif %}">
+        Alle ({{ pending_count + confirmed_count + ignored_count }})
+    </a>
+    <a href="/locations?status=pending{% if search %}&search={{ search }}{% endif %}" class="btn {% if status == 'pending' %}btn-primary{% else %}btn-secondary{% endif %}">
+        Pending ({{ pending_count }})
+    </a>
+    <a href="/locations?status=confirmed{% if search %}&search={{ search }}{% endif %}" class="btn {% if status == 'confirmed' %}btn-primary{% else %}btn-secondary{% endif %}">
+        Confirmed ({{ confirmed_count }})
+    </a>
+    <a href="/locations?status=ignored{% if search %}&search={{ search }}{% endif %}" class="btn {% if status == 'ignored' %}btn-primary{% else %}btn-secondary{% endif %}">
+        Ignored ({{ ignored_count }})
+    </a>
+</div>
+
+<form method="get" action="/locations" class="mb-4" style="display: flex; gap: 0.5rem; align-items: center;">
+    {% if status %}
+    <input type="hidden" name="status" value="{{ status }}">
+    {% endif %}
+    <input type="text" name="search" value="{{ search }}" placeholder="Raw Name oder Stadt filtern..."
+           style="padding: 0.4rem 0.75rem; border: 1px solid var(--border); border-radius: 4px; flex: 1; max-width: 400px;">
+    <button type="submit" class="btn btn-primary btn-sm">Filtern</button>
+    {% if search %}
+    <a href="/locations{% if status %}?status={{ status }}{% endif %}" class="btn btn-secondary btn-sm">Zurücksetzen</a>
+    {% endif %}
+</form>
+
+<div class="card">
+    {% if locations %}
+    <table>
+        <thead>
+            <tr>
+                <th>Source</th>
+                <th>Raw Name</th>
+                <th>Stadt</th>
+                <th>Adresse</th>
+                <th>Geocoding</th>
+                <th>Status</th>
+                <th>Aktionen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for location in locations %}
+            <tr>
+                <td class="text-sm">{{ location.source.name if location.source else '-' }}</td>
+                <td>{{ location.raw_name }}</td>
+                <td>{{ location.city or '-' }}</td>
+                <td class="text-sm text-muted">
+                    {% if location.street %}
+                    {{ location.street }}{% if location.house_number %} {{ location.house_number }}{% endif %},
+                    {{ location.postal_code or '' }} {{ location.city or '' }}
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td>
+                    {% if location.geocoding_status == 'success' %}
+                    <span class="badge badge-confirmed" title="Eindeutiges Ergebnis">OK</span>
+                    {% elif location.geocoding_status == 'multiple' %}
+                    <span class="badge" style="background: #fef3c7; color: #92400e;" title="Mehrere Ergebnisse - erstes verwendet">Mehrfach</span>
+                    {% elif location.geocoding_status == 'not_found' %}
+                    <span class="badge" style="background: #fee2e2; color: #991b1b;" title="Keine Ergebnisse gefunden">Nicht gefunden</span>
+                    {% elif location.geocoding_status == 'error' %}
+                    <span class="badge" style="background: #fee2e2; color: #991b1b;" title="Fehler bei Geocoding-Anfrage">Error</span>
+                    {% else %}
+                    <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if location.status == 'pending' %}
+                    <span class="badge badge-pending">Pending</span>
+                    {% elif location.status == 'confirmed' %}
+                    <span class="badge badge-confirmed">Confirmed</span>
+                    {% else %}
+                    <span class="badge badge-ignored">Ignored</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/locations/{{ location.id }}/edit" class="btn btn-primary btn-sm">Bearbeiten</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        {% if current_page > 1 %}
+        <a href="?page={{ current_page - 1 }}{% if status %}&status={{ status }}{% endif %}{% if search %}&search={{ search }}{% endif %}">Zurück</a>
+        {% endif %}
+
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == current_page %}
+            <a class="active">{{ p }}</a>
+            {% elif p <= 3 or p > total_pages - 2 or (p >= current_page - 1 and p <= current_page + 1) %}
+            <a href="?page={{ p }}{% if status %}&status={{ status }}{% endif %}{% if search %}&search={{ search }}{% endif %}">{{ p }}</a>
+            {% elif p == 4 or p == total_pages - 2 %}
+            <span>...</span>
+            {% endif %}
+        {% endfor %}
+
+        {% if current_page < total_pages %}
+        <a href="?page={{ current_page + 1 }}{% if status %}&status={{ status }}{% endif %}{% if search %}&search={{ search }}{% endif %}">Weiter</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <p class="text-muted">Keine Locations gefunden.</p>
+    {% endif %}
+</div>
+{% endblock %}

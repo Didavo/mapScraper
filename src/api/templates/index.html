@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Event Scraper{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Dashboard</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ total_events }}</div>
+        <div class="stat-label">Events</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ total_sources }}</div>
+        <div class="stat-label">Sources</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ pending_locations }}</div>
+        <div class="stat-label">Pending Locations</div>
+    </div>
+</div>
+
+{% if pending_locations > 0 %}
+<div class="card" style="border-left: 4px solid var(--warning);">
+    <div class="flex items-center justify-between">
+        <div>
+            <strong>{{ pending_locations }} Location(s) warten auf Bearbeitung</strong>
+            <p class="text-muted text-sm">Bitte trage die fehlenden Adressdaten ein.</p>
+        </div>
+        <a href="/locations?status=pending" class="btn btn-primary">Bearbeiten</a>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <h2 class="card-title">Kommende Events</h2>
+    {% if recent_events %}
+    <table>
+        <thead>
+            <tr>
+                <th>Datum</th>
+                <th>Titel</th>
+                <th>Ort</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for event in recent_events %}
+            <tr>
+                <td>{{ event.event_date.strftime('%d.%m.%Y') }}{% if event.event_time %} {{ event.event_time.strftime('%H:%M') }}{% endif %}</td>
+                <td>
+                    {% if event.url %}
+                    <a href="{{ event.url }}" target="_blank">{{ event.title }}</a>
+                    {% else %}
+                    {{ event.title }}
+                    {% endif %}
+                </td>
+                <td class="text-muted">{{ event.raw_location or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div style="margin-top: 1rem;">
+        <a href="/events" class="btn btn-secondary">Alle Events anzeigen</a>
+    </div>
+    {% else %}
+    <p class="text-muted">Noch keine Events vorhanden.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2 class="card-title">Sources</h2>
+    {% if sources %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>URL</th>
+                <th>Letzter Scrape</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for source in sources %}
+            <tr>
+                <td>{{ source.name }}</td>
+                <td class="text-sm text-muted">{{ source.base_url }}</td>
+                <td>{{ source.last_scraped_at.strftime('%d.%m.%Y %H:%M') if source.last_scraped_at else 'Nie' }}</td>
+                <td>
+                    {% if source.is_active %}
+                    <span class="badge badge-confirmed">Aktiv</span>
+                    {% else %}
+                    <span class="badge badge-ignored">Inaktiv</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">Noch keine Sources vorhanden. Führe zuerst einen Scraper aus.</p>
+    {% endif %}
+</div>
+{% endblock %}

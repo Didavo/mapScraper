@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Scrape Logs - Event Scraper{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+    <h1>Scrape Logs ({{ total }})</h1>
+</div>
+
+<div class="filter-bar">
+    <a href="/scrape-logs" class="btn {% if not status %}btn-primary{% else %}btn-secondary{% endif %}">
+        Alle
+    </a>
+    <a href="/scrape-logs?status=success" class="btn {% if status == 'success' %}btn-primary{% else %}btn-secondary{% endif %}">
+        Success
+    </a>
+    <a href="/scrape-logs?status=failed" class="btn {% if status == 'failed' %}btn-primary{% else %}btn-secondary{% endif %}">
+        Failed
+    </a>
+    <a href="/scrape-logs?status=running" class="btn {% if status == 'running' %}btn-primary{% else %}btn-secondary{% endif %}">
+        Running
+    </a>
+
+    {% if sources %}
+    <form method="get" action="/scrape-logs" style="display: flex; gap: 0.5rem; align-items: center; margin-left: auto;">
+        {% if status %}
+        <input type="hidden" name="status" value="{{ status }}">
+        {% endif %}
+        <select name="source_id" class="form-input" onchange="this.form.submit()" style="width: auto; min-width: 180px;">
+            <option value="">Alle Sources</option>
+            {% for source in sources %}
+            <option value="{{ source.id }}" {% if source_id == source.id %}selected{% endif %}>{{ source.name }}</option>
+            {% endfor %}
+        </select>
+    </form>
+    {% endif %}
+</div>
+
+<div class="card">
+    {% if logs %}
+    <table>
+        <thead>
+            <tr>
+                <th>Source</th>
+                <th>Gestartet</th>
+                <th>Dauer</th>
+                <th>Status</th>
+                <th>Gefunden</th>
+                <th>Neu</th>
+                <th>Aktualisiert</th>
+                <th title="Geocoding: Eindeutig / Mehrfach / Nicht gefunden / Fehler">Geocoding</th>
+                <th>Fehler</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td class="text-sm">{{ log.source.name if log.source else '-' }}</td>
+                <td class="text-sm">
+                    {{ log.started_at.strftime('%d.%m.%Y %H:%M') if log.started_at else '-' }}
+                </td>
+                <td class="text-sm">
+                    {% if log.started_at and log.finished_at %}
+                        {% set duration = (log.finished_at - log.started_at).total_seconds() %}
+                        {% if duration < 60 %}
+                            {{ "%.1f"|format(duration) }}s
+                        {% else %}
+                            {{ (duration / 60)|int }}m {{ (duration % 60)|int }}s
+                        {% endif %}
+                    {% elif log.status == 'running' %}
+                        ...
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>
+                    {% if log.status == 'success' %}
+                    <span class="badge badge-confirmed">Success</span>
+                    {% elif log.status == 'failed' %}
+                    <span class="badge" style="background: #fee2e2; color: #991b1b;">Failed</span>
+                    {% elif log.status == 'running' %}
+                    <span class="badge badge-pending">Running</span>
+                    {% else %}
+                    <span class="badge badge-ignored">{{ log.status }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ log.events_found }}</td>
+                <td>{{ log.events_new }}</td>
+                <td>{{ log.events_updated }}</td>
+                <td class="text-sm" style="white-space: nowrap;">
+                    {% set geo_total = (log.geocoding_success or 0) + (log.geocoding_multiple or 0) + (log.geocoding_not_found or 0) + (log.geocoding_errors or 0) %}
+                    {% if geo_total > 0 %}
+                    <span title="Eindeutig" style="color: #166534;">{{ log.geocoding_success or 0 }}</span>
+                    /
+                    <span title="Mehrfach" style="color: {% if (log.geocoding_multiple or 0) > 0 %}#92400e{% else %}#6b7280{% endif %};">{{ log.geocoding_multiple or 0 }}</span>
+                    /
+                    <span title="Nicht gefunden" style="color: {% if (log.geocoding_not_found or 0) > 0 %}#991b1b{% else %}#6b7280{% endif %};">{{ log.geocoding_not_found or 0 }}</span>
+                    /
+                    <span title="Fehler" style="color: {% if (log.geocoding_errors or 0) > 0 %}#991b1b{% else %}#6b7280{% endif %};">{{ log.geocoding_errors or 0 }}</span>
+                    {% else %}
+                    <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+                <td class="text-sm text-muted" style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    {{ log.error_message or '-' }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        {% if current_page > 1 %}
+        <a href="?page={{ current_page - 1 }}{% if status %}&status={{ status }}{% endif %}{% if source_id %}&source_id={{ source_id }}{% endif %}">Zurück</a>
+        {% endif %}
+
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == current_page %}
+            <a class="active">{{ p }}</a>
+            {% elif p <= 3 or p > total_pages - 2 or (p >= current_page - 1 and p <= current_page + 1) %}
+            <a href="?page={{ p }}{% if status %}&status={{ status }}{% endif %}{% if source_id %}&source_id={{ source_id }}{% endif %}">{{ p }}</a>
+            {% elif p == 4 or p == total_pages - 2 %}
+            <span>...</span>
+            {% endif %}
+        {% endfor %}
+
+        {% if current_page < total_pages %}
+        <a href="?page={{ current_page + 1 }}{% if status %}&status={{ status }}{% endif %}{% if source_id %}&source_id={{ source_id }}{% endif %}">Weiter</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <p class="text-muted">Keine Scrape Logs gefunden.</p>
+    {% endif %}
+</div>
+{% endblock %}
