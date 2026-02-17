@@ -114,7 +114,14 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
 
     print("Scheduler gestartet. Warte auf nächsten Scrape-Lauf...")
-    print(f"Nächster Lauf: {scheduler.get_jobs()[0].next_run_time}\n")
+    jobs = scheduler.get_jobs()
+    if jobs:
+        job = jobs[0]
+        next_run = getattr(job, "next_run_time", None)
+        if next_run:
+            print(f"Nächster Lauf: {next_run}\n")
+        else:
+            print(f"Job registriert: {job.name}\n")
 
     try:
         scheduler.start()

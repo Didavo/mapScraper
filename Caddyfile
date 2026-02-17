@@ -1,14 +1,14 @@
 # Ersetze mit deiner Domain oder IP
-# Für Domain mit automatischem HTTPS:
-#   scraper.deine-domain.de
-# Für erstmal nur IP (kein HTTPS):
-#   :80
+# Fuer Domain mit automatischem HTTPS:
+#   SITE_ADDRESS=scraper.deine-domain.de
+# Fuer erstmal nur IP (kein HTTPS):
+#   SITE_ADDRESS=:80
 
 {$SITE_ADDRESS:localhost} {
     # Basic Auth - Passwort-Hash generieren mit:
     #   docker run --rm caddy:2-alpine caddy hash-password --plaintext DEIN_PASSWORT
-    basicauth * {
-        {$AUTH_USER:admin} {$AUTH_PASSWORD_HASH}
+    basic_auth * {
+        {$AUTH_USER} {$AUTH_PASSWORD_HASH}
     }
 
     # Reverse Proxy zu FastAPI
