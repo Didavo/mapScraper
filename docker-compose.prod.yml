@@ -10,7 +10,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-    # Kein ports: - DB nur intern erreichbar
+    ports:
+      - "127.0.0.1:5432:5432"  # Nur localhost - kein externer Zugriff
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
@@ -74,6 +75,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+      AUTH_USER: ${AUTH_USER}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

@@ -1,26 +1,25 @@
-# Ersetze mit deiner Domain oder IP
-# Fuer Domain mit automatischem HTTPS:
-#   SITE_ADDRESS=scraper.deine-domain.de
-# Fuer erstmal nur IP (kein HTTPS):
-#   SITE_ADDRESS=:80
+# Event Scraper - Caddy Reverse Proxy mit Basic Auth
+#
+# WICHTIG: Auf dem Server die Credentials direkt eintragen!
+#   1. Hash generieren: docker run --rm caddy:2-alpine caddy hash-password --plaintext DEIN_PASSWORT
+#   2. Unten admin + Hash eintragen
+#
+# HTTPS wird automatisch via Let's Encrypt aktiviert, sobald SITE_ADDRESS
+# eine echte Domain ist (z.B. "scraper.deine-domain.de").
+# Fuer reines HTTP setze: SITE_ADDRESS=http://:80
 
-{$SITE_ADDRESS:localhost} {
-    # Basic Auth - Passwort-Hash generieren mit:
-    #   docker run --rm caddy:2-alpine caddy hash-password --plaintext DEIN_PASSWORT
+{$SITE_ADDRESS} {
     basic_auth * {
         {$AUTH_USER} {$AUTH_PASSWORD_HASH}
     }
 
-    # Reverse Proxy zu FastAPI
     reverse_proxy api:8000
 
-    # Logging
     log {
         output stdout
         format console
     }
 
-    # Security Headers
     header {
         X-Content-Type-Options nosniff
         X-Frame-Options DENY
