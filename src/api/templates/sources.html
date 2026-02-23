@@ -5,6 +5,14 @@
 {% block content %}
 <div class="flex items-center justify-between mb-4">
     <h1>Sources</h1>
+    {% if source_stats %}
+    <div class="flex items-center gap-2">
+        <span id="run-all-result" class="text-sm" style="display:none;"></span>
+        <button id="run-all-btn" class="btn btn-primary" onclick="runAllScrapers(this)">
+            Alle starten
+        </button>
+    </div>
+    {% endif %}
 </div>
 
 <div class="card">
@@ -18,6 +26,7 @@
                 <th>Events</th>
                 <th>Letzter Scrape</th>
                 <th>Status</th>
+                <th>Aktion</th>
             </tr>
         </thead>
         <tbody>
@@ -45,6 +54,15 @@
                     <span class="badge badge-ignored">Inaktiv</span>
                     {% endif %}
                 </td>
+                <td style="white-space: nowrap;">
+                    {% if item.scraper_key %}
+                    <button class="btn btn-sm btn-secondary"
+                            onclick="runScraper(this, '{{ item.scraper_key }}')">
+                        Starten
+                    </button>
+                    <span class="scraper-result text-sm" style="display:none; margin-left: 0.5rem;"></span>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -60,17 +78,70 @@
     {% endif %}
 </div>
 
-<div class="card">
-    <h2 class="card-title">Scraper ausführen</h2>
-    <p class="text-muted mb-4">Nutze die API oder CLI um Scraper auszuführen:</p>
+<script>
+async function runScraper(btn, name) {
+    const resultSpan = btn.nextElementSibling;
+    btn.disabled = true;
+    btn.textContent = 'Läuft…';
+    resultSpan.style.display = 'none';
 
-    <div style="background: var(--gray-900); color: var(--gray-100); padding: 1rem; border-radius: 6px; font-family: monospace; font-size: 0.875rem;">
-        <div style="margin-bottom: 0.5rem; color: var(--gray-500);"># CLI</div>
-        <div>docker compose run --rm scraper python -m src scrape mulfingen</div>
-        <div style="margin-top: 1rem; margin-bottom: 0.5rem; color: var(--gray-500);"># API</div>
-        <div>curl -X POST http://localhost:8000/api/scraper/run \</div>
-        <div style="padding-left: 1rem;">-H "Content-Type: application/json" \</div>
-        <div style="padding-left: 1rem;">-d '{"source_name": "mulfingen"}'</div>
-    </div>
-</div>
+    try {
+        const resp = await fetch('/api/scraper/run', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({source_name: name})
+        });
+        const data = await resp.json();
+
+        if (data.status === 'success') {
+            resultSpan.textContent = `✓ ${data.events_new} neu, ${data.events_updated} aktualisiert`;
+            resultSpan.style.color = 'var(--success)';
+        } else {
+            resultSpan.textContent = `✗ ${data.error || 'Fehler'}`;
+            resultSpan.style.color = 'var(--danger)';
+        }
+    } catch (e) {
+        resultSpan.textContent = '✗ Verbindungsfehler';
+        resultSpan.style.color = 'var(--danger)';
+    }
+
+    resultSpan.style.display = '';
+    btn.textContent = 'Starten';
+    btn.disabled = false;
+}
+
+async function runAllScrapers(btn) {
+    const resultSpan = document.getElementById('run-all-result');
+    btn.disabled = true;
+    btn.textContent = 'Läuft…';
+    resultSpan.style.display = 'none';
+
+    try {
+        const resp = await fetch('/api/scraper/run-all', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const data = await resp.json();
+
+        const total = data.results.length;
+        const failed = data.results.filter(r => r.status !== 'success').length;
+        const totalNew = data.results.reduce((s, r) => s + (r.events_new || 0), 0);
+
+        if (failed === 0) {
+            resultSpan.textContent = `✓ ${total}/${total} erfolgreich, ${totalNew} neue Events`;
+            resultSpan.style.color = 'var(--success)';
+        } else {
+            resultSpan.textContent = `⚠ ${total - failed}/${total} erfolgreich, ${failed} Fehler, ${totalNew} neue Events`;
+            resultSpan.style.color = 'var(--warning)';
+        }
+    } catch (e) {
+        resultSpan.textContent = '✗ Verbindungsfehler';
+        resultSpan.style.color = 'var(--danger)';
+    }
+
+    resultSpan.style.display = '';
+    btn.textContent = 'Alle starten';
+    btn.disabled = false;
+}
+</script>
 {% endblock %}

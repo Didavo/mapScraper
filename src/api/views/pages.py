@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from src.models import Event, Source, Location, LocationStatus, ScrapeLog
 from ..dependencies import get_db
+from ..routers.scraper import SCRAPER_REGISTRY
 
 router = APIRouter()
 
@@ -311,6 +312,10 @@ def sources_page(request: Request, db: Session = Depends(get_db)):
             "source": source,
             "events_count": events_count,
         })
+
+    class_to_key = {cls.__name__: key for key, cls in SCRAPER_REGISTRY.items()}
+    for item in source_stats:
+        item["scraper_key"] = class_to_key.get(item["source"].scraper_class, "")
 
     return templates.TemplateResponse(
         "sources.html",
