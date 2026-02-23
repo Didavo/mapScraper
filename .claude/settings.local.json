@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(docker compose run:*)",
-      "Bash(dir:*)",
-      "WebFetch(domain:schrozberg.de)"
-    ]
-  }
-}
