@@ -2,198 +2,178 @@
 Scraper für die Gemeinde Zweiflingen.
 Website: https://www.zweiflingen.de/veranstaltungskalender/
 
-Besonderheit: JetEngine Calendar (Elementor/WordPress)
-- Kalender-Widget lädt Monate dynamisch per JavaScript
-- Wir nutzen Playwright um durch die Monate zu navigieren
+JetEngine Calendar (Elementor/WordPress) - POST API
+Statt Playwright wird direkt wp-admin/admin-ajax.php aufgerufen.
+Die API gibt JSON zurück, dessen "data.content" das Kalender-HTML enthält.
 """
 
+import random
 import re
-import time as time_module
 from datetime import date as date_class, time as time_class
 from typing import List, Optional, Dict, Any
 
 from bs4 import BeautifulSoup, Tag
-from playwright.sync_api import sync_playwright, Page
 
 from ...base import BaseScraper, ScrapedEvent
 from src.models import ScrapeStatus
 
 
 class ZweiflingenScraper(BaseScraper):
-    """Scraper für Zweiflingen Veranstaltungen (JetEngine Calendar mit Playwright)."""
+    """Scraper für Zweiflingen Veranstaltungen (JetEngine Calendar API)."""
 
     SOURCE_NAME = "Gemeinde Zweiflingen"
     BASE_URL = "https://www.zweiflingen.de"
     EVENTS_URL = "https://www.zweiflingen.de/veranstaltungskalender/"
 
-    # Für Google Geocoding API - grenzt Suchergebnisse ein
     GEOCODE_REGION = "74639 Zweiflingen"
 
-    # Anzahl Monate in die Zukunft, die gescraped werden sollen
-    MONTHS_AHEAD = 3
+    # Anzahl Monate in die Zukunft
+    MONTHS_AHEAD = 6
 
-    # Selektoren für Navigation
-    NEXT_MONTH_SELECTOR = ".jet-calendar-nav__link.nav-link-next"
-    CALENDAR_SELECTOR = "div.jet-calendar"
+    # JetEngine AJAX-Endpunkt (mit nocache-Parameter gegen Server-Caching)
+    API_URL = "https://www.zweiflingen.de/veranstaltungskalender/"
 
-    # Deutsche Monatsnamen
-    MONTH_NAMES = {
-        "januar": 1, "jan": 1,
-        "februar": 2, "feb": 2,
-        "märz": 3, "mar": 3, "mär": 3,
-        "april": 4, "apr": 4,
-        "mai": 5,
-        "juni": 6, "jun": 6,
-        "juli": 7, "jul": 7,
-        "august": 8, "aug": 8,
-        "september": 9, "sep": 9, "sept": 9,
-        "oktober": 10, "okt": 10,
-        "november": 11, "nov": 11,
-        "dezember": 12, "dez": 12,
+    # Feste API-Parameter (aus Browser-Request extrahiert)
+    API_SETTINGS = {
+        "jet_engine_action": "jet_engine_calendar_get_month",
+        "settings[lisitng_id]": "35389",
+        "settings[week_days_format]": "short",
+        "settings[allow_multiday]": "",
+        "settings[end_date_key]": "",
+        "settings[group_by]": "meta_date",
+        "settings[group_by_key]": "datum_meta",
+        "settings[meta_query_relation]": "AND",
+        "settings[tax_query_relation]": "AND",
+        "settings[hide_widget_if]": "",
+        "settings[caption_layout]": "layout-1",
+        "settings[show_posts_nearby_months]": "yes",
+        "settings[hide_past_events]": "",
+        "settings[allow_date_select]": "",
+        "settings[start_year_select]": "1970",
+        "settings[end_year_select]": "2038",
+        "settings[use_custom_post_types]": "",
+        "settings[custom_post_types]": "",
+        "settings[custom_query]": "yes",
+        "settings[custom_query_id]": "148",
+        "settings[_element_id]": "",
+        "settings[cache_enabled]": "",
+        "settings[cache_timeout]": "60",
+        "settings[max_cache]": "12",
+        "settings[_id]": "cabff9b",
+        "settings[__switch_direction]": "1",
+        "post": "47012",
     }
 
-    def parse_german_date(self, date_str: str) -> Optional[date_class]:
+    # Englische Monatsnamen für die API (locale-unabhängig)
+    EN_MONTHS = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ]
+
+    MONTH_NAMES = {
+        "jan": 1, "januar": 1,
+        "feb": 2, "februar": 2,
+        "mär": 3, "mar": 3, "märz": 3,
+        "apr": 4, "april": 4,
+        "mai": 5,
+        "jun": 6, "juni": 6,
+        "jul": 7, "juli": 7,
+        "aug": 8, "august": 8,
+        "sep": 9, "sept": 9, "september": 9,
+        "okt": 10, "oktober": 10,
+        "nov": 11, "november": 11,
+        "dez": 12, "dezember": 12,
+    }
+
+    def _fetch_month(self, month_str: str) -> Optional[BeautifulSoup]:
+        """Ruft die JetEngine API für einen Monat auf.
+
+        month_str: Englischer Monatsname + Jahr, z.B. "April 2026"
+        Gibt BeautifulSoup des Kalender-HTMLs zurück, oder None bei Fehler.
         """
-        Parst deutsches Datumsformat: "25. Feb. 2026" oder "3. März 2026"
-        """
-        if not date_str:
+        import time
+        time.sleep(self.settings.request_delay)
+
+        payload = dict(self.API_SETTINGS)
+        payload["month"] = month_str
+
+        url = f"{self.API_URL}?nocache={random.randint(1000000000, 9999999999)}"
+        response = self.http_session.post(url, data=payload, timeout=30)
+        response.raise_for_status()
+
+        data = response.json()
+        if not data.get("success"):
+            print(f"[WARN] API-Fehler für {month_str}: {data}")
             return None
 
-        date_str = date_str.strip().lower()
+        html = data.get("data", {}).get("content", "")
+        return BeautifulSoup(html, "lxml") if html else None
 
-        # Format: "25. Feb. 2026" oder "3. März 2026"
+    def parse_german_date(self, date_str: str) -> Optional[date_class]:
+        """Parst "25. Feb. 2026" oder "3. März 2026" -> date"""
+        if not date_str:
+            return None
+        date_str = date_str.strip().lower()
         match = re.match(r"(\d{1,2})\.\s*(\w+)\.?\s*(\d{4})", date_str)
         if match:
-            day = int(match.group(1))
-            month_str = match.group(2).lower()
-            year = int(match.group(3))
-
-            month = self.MONTH_NAMES.get(month_str)
+            month = self.MONTH_NAMES.get(match.group(2))
             if month:
                 try:
-                    return date_class(year, month, day)
+                    return date_class(int(match.group(3)), month, int(match.group(1)))
                 except ValueError:
-                    return None
-
+                    pass
         return None
 
     def parse_time(self, time_str: str) -> Optional[time_class]:
-        """
-        Parst Uhrzeitformat: "| 19:00" oder "19:00"
-        """
+        """Parst "| 19:00" oder "19:00" -> time"""
         if not time_str:
             return None
-
-        # Entferne Pipe-Zeichen und Whitespace
-        time_str = time_str.replace("|", "").strip()
-
-        match = re.search(r"(\d{1,2}):(\d{2})", time_str)
+        match = re.search(r"(\d{1,2}):(\d{2})", time_str.replace("|", ""))
         if match:
             try:
-                hour = int(match.group(1))
-                minute = int(match.group(2))
-                return time_class(hour, minute)
+                return time_class(int(match.group(1)), int(match.group(2)))
             except ValueError:
-                return None
-
+                pass
         return None
 
     def run(self, debug: bool = False) -> Dict[str, Any]:
-        """
-        Führt den Scrape-Vorgang mit Playwright durch.
-        Überschreibt die BaseScraper.run() Methode.
-        """
+        """Führt den Scrape-Vorgang via JetEngine POST API durch."""
         self.source = self.get_or_create_source()
         self.scrape_log = self.start_scrape_log()
 
-        events_found = 0
         events_new = 0
         events_updated = 0
-        skipped = 0
 
         try:
             all_events = []
-            seen_event_keys = set()
+            seen_ids = set()
 
-            with sync_playwright() as p:
-                # Browser starten (headless)
-                browser = p.chromium.launch(headless=True)
-                page = browser.new_page()
+            today = date_class.today()
+            year, month = today.year, today.month
 
-                print(f"[INFO] Lade {self.EVENTS_URL}...")
-                page.goto(self.EVENTS_URL, wait_until="networkidle")
+            for i in range(self.MONTHS_AHEAD):
+                month_str = f"{self.EN_MONTHS[month - 1]} {year}"
+                print(f"[INFO] Lade Monat {i + 1}/{self.MONTHS_AHEAD}: {month_str}")
 
-                # Warte auf Kalender
-                page.wait_for_selector(self.CALENDAR_SELECTOR, timeout=10000)
+                soup = self._fetch_month(month_str)
+                if soup is None:
+                    print(f"[WARN] Kein Inhalt für {month_str}")
+                else:
+                    month_events = self._parse_calendar_events(soup, seen_ids)
+                    all_events.extend(month_events)
+                    print(f"[INFO]   → {len(month_events)} Events")
 
-                # Parse aktuellen Monat
-                current_month = self._get_current_month_name(page)
-                print(f"[INFO] Aktueller Monat: {current_month}")
+                month += 1
+                if month > 12:
+                    month = 1
+                    year += 1
 
-                html = page.content()
-                soup = BeautifulSoup(html, "lxml")
-                month_events = self._parse_calendar_events(soup, seen_event_keys)
-                all_events.extend(month_events)
-                print(f"[INFO] {len(month_events)} Events in {current_month}")
-
-                # Navigiere durch weitere Monate
-                for i in range(self.MONTHS_AHEAD):
-                    try:
-                        # Klick auf "Nächster Monat"
-                        next_btn = page.locator(self.NEXT_MONTH_SELECTOR)
-                        if next_btn.count() == 0:
-                            print("[WARN] Kein 'Nächster Monat' Button gefunden")
-                            break
-
-                        # Merke aktuellen Monatsnamen für Änderungs-Check
-                        old_month = self._get_current_month_name(page)
-
-                        next_btn.click()
-
-                        # Warte auf Aktualisierung des Kalenders
-                        time_module.sleep(1)  # Kurze Pause für AJAX
-                        page.wait_for_load_state("networkidle")
-
-                        # Warte bis Monatsname sich ändert
-                        new_month = self._get_current_month_name(page)
-                        attempts = 0
-                        while new_month == old_month and attempts < 10:
-                            time_module.sleep(0.3)
-                            new_month = self._get_current_month_name(page)
-                            attempts += 1
-
-                        if new_month == old_month:
-                            print(f"[WARN] Monat hat sich nicht geändert nach Klick")
-                            break
-
-                        print(f"[INFO] Navigiert zu: {new_month}")
-
-                        # Parse Events
-                        html = page.content()
-                        soup = BeautifulSoup(html, "lxml")
-                        month_events = self._parse_calendar_events(soup, seen_event_keys)
-                        all_events.extend(month_events)
-                        print(f"[INFO] {len(month_events)} Events in {new_month}")
-
-                    except Exception as e:
-                        print(f"[WARN] Fehler bei Navigation: {e}")
-                        break
-
-                browser.close()
-
-            # Events speichern
             events_found = len(all_events)
             if debug:
                 print(f"[DEBUG] Gesamt: {events_found} Events gefunden")
 
-            seen_ids = set()
             for scraped in all_events:
-                if scraped.external_id in seen_ids:
-                    skipped += 1
-                    continue
-                seen_ids.add(scraped.external_id)
-
-                event, is_new = self.save_event(scraped)
+                _, is_new = self.save_event(scraped)
                 if is_new:
                     events_new += 1
                 else:
@@ -212,7 +192,6 @@ class ZweiflingenScraper(BaseScraper):
                 "events_found": events_found,
                 "events_new": events_new,
                 "events_updated": events_updated,
-                "skipped_duplicates": skipped,
             }
 
         except Exception as e:
@@ -220,55 +199,30 @@ class ZweiflingenScraper(BaseScraper):
             if debug:
                 traceback.print_exc()
             self.finish_scrape_log(ScrapeStatus.FAILED, error_message=str(e))
-            return {
-                "status": "failed",
-                "source": self.SOURCE_NAME,
-                "error": str(e),
-            }
-
-    def _get_current_month_name(self, page: Page) -> str:
-        """Extrahiert den aktuellen Monatsnamen aus dem Kalender."""
-        try:
-            month_elem = page.locator(".jet-calendar-caption__name")
-            if month_elem.count() > 0:
-                return month_elem.inner_text()
-        except:
-            pass
-        return "Unbekannt"
+            return {"status": "failed", "source": self.SOURCE_NAME, "error": str(e)}
 
     def parse_events(self, soup: BeautifulSoup) -> List[ScrapedEvent]:
-        """
-        Standard parse_events - wird hier nicht direkt verwendet,
-        da wir run() überschreiben, aber für Kompatibilität nötig.
-        """
+        """Für Kompatibilität mit BaseScraper."""
         return self._parse_calendar_events(soup, set())
 
     def _parse_calendar_events(
-        self, soup: BeautifulSoup, seen_keys: set
+        self, soup: BeautifulSoup, seen_ids: set
     ) -> List[ScrapedEvent]:
         """Parst Events aus dem Kalender-HTML."""
         events = []
-
-        # Finde alle Event-Container
-        event_containers = soup.select("div.jet-calendar-week__day-event[data-post-id]")
-
-        for container in event_containers:
+        for container in soup.select("div.jet-calendar-week__day-event[data-post-id]"):
             event = self._parse_single_event(container)
-            if event and event.external_id not in seen_keys:
-                seen_keys.add(event.external_id)
+            if event and event.external_id not in seen_ids:
+                seen_ids.add(event.external_id)
                 events.append(event)
-
         return events
 
     def _parse_single_event(self, container: Tag) -> Optional[ScrapedEvent]:
-        """Parst ein einzelnes Event aus dem Container."""
-
-        # Post-ID extrahieren (für external_id)
+        """Parst ein einzelnes Event aus dem Kalender-Container."""
         post_id = container.get("data-post-id", "")
         if not post_id:
             return None
 
-        # Titel extrahieren
         title_elem = container.select_one("h3.elementor-heading-title a")
         if not title_elem:
             return None
@@ -277,29 +231,22 @@ class ZweiflingenScraper(BaseScraper):
         if not title:
             return None
 
-        # URL extrahieren
         url = title_elem.get("href", "")
         if url and not url.startswith("http"):
             url = self.resolve_url(url)
 
-        # Datum extrahieren
-        date_elem = None
+        # Datum: erstes Feld das dem Datumsmuster entspricht
+        event_date = None
         for field in container.select(".jet-listing-dynamic-field__content"):
             text = field.get_text(strip=True)
             if re.match(r"\d{1,2}\.\s*\w+\.?\s*\d{4}", text):
-                date_elem = field
+                event_date = self.parse_german_date(text)
                 break
-
-        if not date_elem:
-            return None
-
-        date_text = date_elem.get_text(strip=True)
-        event_date = self.parse_german_date(date_text)
 
         if not event_date:
             return None
 
-        # Uhrzeit extrahieren
+        # Uhrzeit: Feld mit "| HH:MM"
         event_time = None
         for field in container.select(".jet-listing-dynamic-field__content"):
             text = field.get_text(strip=True)
@@ -307,7 +254,7 @@ class ZweiflingenScraper(BaseScraper):
                 event_time = self.parse_time(text)
                 break
 
-        # Location extrahieren (aus dem Location-Field, max 100 Zeichen)
+        # Location: bekanntes data-id Attribut des Location-Feldes
         location = None
         loc_elem = container.select_one(
             "div[data-id='a2b84f8'] .jet-listing-dynamic-field__content"
@@ -317,11 +264,8 @@ class ZweiflingenScraper(BaseScraper):
             if len(loc_text) < 100:
                 location = loc_text
 
-        # External ID generieren
-        external_id = f"zweiflingen_{post_id}_{event_date}"
-
         return ScrapedEvent(
-            external_id=external_id,
+            external_id=f"zweiflingen_{post_id}_{event_date}",
             title=title,
             event_date=event_date,
             event_time=event_time,

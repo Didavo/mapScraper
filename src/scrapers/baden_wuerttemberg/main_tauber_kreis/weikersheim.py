@@ -2,8 +2,9 @@
 Scraper für die Stadt Weikersheim.
 Website: https://www.weikersheim.de
 
-HTML-basierter Scraper mit Pagination (KOMM.ONE CMS).
-URL-Muster: /node/3502554/page{N}/page{N}?zm.sid=...
+HTML-basierter Scraper mit Monats-Navigation (KOMM.ONE CMS).
+Die "Pagination" ist eine Monatsfilterung über div.zmRegister.
+Jeder Monat hat eine eigene tlist-URL; alle aktiven Monate werden einzeln abgerufen.
 Events enthalten Datum, Uhrzeit, Location und Kategorie.
 """
 
@@ -65,44 +66,78 @@ class WeikersheimScraper(BaseScraper):
             return match.group(1)
         return None
 
-    def _get_total_pages(self, soup: BeautifulSoup) -> int:
-        """Ermittelt die Gesamtanzahl der Seiten aus der Pagination."""
-        pagination = soup.select_one("div.zmNavigClass")
-        if not pagination:
-            return 1
+    def _get_month_urls(self, soup: BeautifulSoup) -> List[str]:
+        """Extrahiert alle Monats-URLs aus der zmRegister-Navigation.
 
-        max_page = 1
-        for link in pagination.select("a[href]"):
+        Aktive Monate sind <a class="aktiv" href="...tlist/yyyymm(...)...">.
+        Der aktuelle Monat ist <span class="selected current"> (kein Link).
+        Inaktive Monate sind <span class="inaktiv"> (kein Link).
+        """
+        nav = soup.select_one("div.zmRegister")
+        if not nav:
+            return []
+
+        urls = []
+        for link in nav.select("a.aktiv[href]"):
             href = link.get("href", "")
-            match = re.search(r"/page(\d+)/", href)
-            if match:
-                page_num = int(match.group(1))
-                if page_num > max_page:
-                    max_page = page_num
+            if "tlist/yyyymm" in href:
+                full_url = self.BASE_URL + href if href.startswith("/") else href
+                urls.append(full_url)
+        return urls
 
-        return max_page
-
-    def _build_page_url(self, page: int) -> str:
-        """Baut die URL für eine bestimmte Seite."""
-        return f"{self.BASE_URL}/site/Weikersheim-Layout/node/3502554/page{page}/page{page}?zm.sid=zmj1si9fnbi2"
+    def _generate_month_urls(self) -> List[str]:
+        """Generiert tlist-URLs für den aktuellen und die nächsten 11 Monate."""
+        today = date_class.today()
+        urls = []
+        year, month = today.year, today.month
+        for _ in range(12):
+            yyyymm = f"{year}{month:02d}"
+            urls.append(
+                f"{self.BASE_URL}/site/Weikersheim-Layout/node/3502554"
+                f"/tlist/yyyymm({yyyymm})/index.html"
+            )
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+        return urls
 
     def parse_events(self, soup: BeautifulSoup) -> List[ScrapedEvent]:
-        """Parst Events von allen Seiten (mit Pagination)."""
+        """Parst Events von allen Monatsseiten.
+
+        Versucht zuerst die Monats-URLs aus der zmRegister-Navigation zu lesen.
+        Fallback: URLs für die nächsten 12 Monate direkt generieren.
+        """
         all_events = []
         seen_ids = set()
 
-        total_pages = self._get_total_pages(soup)
-        print(f"[INFO] {total_pages} Seiten gefunden")
+        month_urls = self._get_month_urls(soup)
 
-        for page in range(1, total_pages + 1):
-            if page == 1:
-                page_soup = soup
-            else:
-                print(f"[INFO] Lade Seite {page}/{total_pages}")
-                page_soup = self.fetch_page(self._build_page_url(page))
+        if not month_urls:
+            # azlist-Seite oder fehlende Navigation → aktuelle Monatsseite laden
+            today = date_class.today()
+            yyyymm = today.strftime("%Y%m")
+            current_url = (
+                f"{self.BASE_URL}/site/Weikersheim-Layout/node/3502554"
+                f"/tlist/yyyymm({yyyymm})/index.html"
+            )
+            print(f"[INFO] Lade aktuelle Monatsseite für Navigation: {current_url}")
+            nav_soup = self.fetch_page(current_url)
+            month_urls = self._get_month_urls(nav_soup)
 
-            page_events = self._parse_page_events(page_soup, seen_ids)
+        if month_urls:
+            print(f"[INFO] {len(month_urls)} Monate aus Navigation extrahiert")
+        else:
+            # Fallback: Monats-URLs direkt generieren
+            month_urls = self._generate_month_urls()
+            print(f"[INFO] Navigation nicht gefunden, generiere {len(month_urls)} Monats-URLs")
+
+        for i, url in enumerate(month_urls, 1):
+            print(f"[INFO] Lade Monat {i}/{len(month_urls)}: {url}")
+            month_soup = self.fetch_page(url)
+            page_events = self._parse_page_events(month_soup, seen_ids)
             all_events.extend(page_events)
+            print(f"[INFO]   → {len(page_events)} Events")
 
         return all_events
 
