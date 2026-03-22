@@ -1,0 +1,22 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy_global
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    environment:
+      SCRAPER_AUTH_USER: ${SCRAPER_AUTH_USER}
+      SCRAPER_AUTH_PASSWORD_HASH: ${SCRAPER_AUTH_PASSWORD_HASH}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Zugriff auf Host-Ports (Linux)
+
+volumes:
+  caddy_data:   # TLS-Zertifikate (Let's Encrypt)
+  caddy_config:

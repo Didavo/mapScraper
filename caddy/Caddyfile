@@ -1,0 +1,25 @@
+# Globaler Reverse Proxy für alle Dienste auf dieser VM
+#
+# Credentials für Basic Auth:
+#   Hash generieren: docker run --rm caddy:2-alpine caddy hash-password --plaintext DEIN_PASSWORT
+#   In .env eintragen: AUTH_USER=admin, AUTH_PASSWORD_HASH=$2a$14$...
+#   WICHTIG: $ im Hash als $$ escapen in der .env Datei
+
+scraper.beckstar.de {
+    basic_auth * {
+        {$SCRAPER_AUTH_USER} {$SCRAPER_AUTH_PASSWORD_HASH}
+    }
+    reverse_proxy host.docker.internal:3001
+    log { output stdout; format console }
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
+    }
+}
+
+# app.beckstar.de {
+#     reverse_proxy host.docker.internal:3000
+#     log { output stdout; format console }
+# }
