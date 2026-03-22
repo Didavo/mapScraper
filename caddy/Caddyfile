@@ -22,10 +22,10 @@ scraper.beckstar.de {
     }
 }
 
-# app.beckstar.de {
-#     reverse_proxy host.docker.internal:3000
-#     log {
-#         output stdout
-#         format console
-#     }
-# }
+app.beckstar.de {
+    reverse_proxy mapperino:3000
+    log {
+        output stdout
+        format console
+    }
+}
