@@ -9,7 +9,7 @@ scraper.beckstar.de {
     basic_auth * {
         {$SCRAPER_AUTH_USER} {$SCRAPER_AUTH_PASSWORD_HASH}
     }
-    reverse_proxy host.docker.internal:3001
+    reverse_proxy event_scraper_api:8000
     log {
         output stdout
         format console

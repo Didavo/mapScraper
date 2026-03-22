@@ -38,11 +38,10 @@ services:
       API_PORT: 8000
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       GEOCODING_DRY_RUN: ${GEOCODING_DRY_RUN:-false}
-    ports:
-      - "127.0.0.1:3001:8000"  # Nur localhost - globaler Caddy routet hierher
     command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     networks:
       - internal
+      - web
 
   scheduler:
     build: .
@@ -75,3 +74,5 @@ volumes:
 networks:
   internal:
     driver: bridge
+  web:
+    external: true

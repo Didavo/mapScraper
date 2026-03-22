@@ -14,8 +14,12 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    extra_hosts:
-      - "host.docker.internal:host-gateway"  # Zugriff auf Host-Ports (Linux)
+    networks:
+      - web
+
+networks:
+  web:
+    external: true
 
 volumes:
   caddy_data:   # TLS-Zertifikate (Let's Encrypt)
