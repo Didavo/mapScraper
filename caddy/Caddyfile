@@ -22,7 +22,7 @@ scraper.beckstar.de {
     }
 }
 
-app.beckstar.de {
+beckstar.de {
     reverse_proxy mapperino:3000
     log {
         output stdout
